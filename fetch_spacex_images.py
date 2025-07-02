@@ -1,77 +1,52 @@
-import os
-
 import requests
-from dotenv import load_dotenv
+from utils import run_script, logger
+from common import download_image
 
+def fetch_spacex_last_launch(launch_id: str = None, save_dir: str = "spacex_images") -> None:
+    """Получает фотографии запуска SpaceX по ID или последнего запуска и сохраняет их локально.
 
-def download_image(url: str, save_path: str) -> None:
-    """Загружает изображение по URL и сохраняет его по указанному пути.
     Args:
-        url (str): URL-адрес изображения для скачивания.
-        save_path (str): Полный путь для сохранения файла, включая имя файла и расширение.
+        launch_id (str, optional): Идентификатор запуска SpaceX в формате API v4. Если None, загружается последний запуск.
+        save_dir (str, optional): Папка для сохранения изображений. По умолчанию 'spacex_images'.
 
     Raises:
-        requests.exceptions.HTTPError: Возникает, если HTTP-запрос завершился с ошибкой.
-        requests.exceptions.RequestException: Возникает при других ошибках во время запроса.
-        OSError: Возникает при ошибках создания директорий или записи файла.
+        requests.exceptions.HTTPError: Ошибки при выполнении HTTP-запроса.
+        requests.exceptions.RequestException: Другие ошибки запроса.
     """
+    if launch_id:
+        url = f"https://api.spacexdata.com/v4/launches/{launch_id}"
+        prefix = f"spacex_{launch_id}"
+    else:
+        url = "https://api.spacexdata.com/v4/launches/latest"
+        prefix = "spacex_latest"
 
-    folder = os.path.dirname(save_path)
-    if folder:
-        os.makedirs(folder, exist_ok=True)
+    try:
+        response = requests.get(url, timeout=30)
+        response.raise_for_status()
+        data = response.json()
+        image_urls = data.get("links", {}).get("flickr", {}).get("original", [])
 
-    response = requests.get(url, timeout=10)
-    response.raise_for_status()
+        if not image_urls:
+            logger.warning(f"Фотографий для запуска {'последнего' if not launch_id else launch_id} не найдено.")
+            return
 
-    with open(save_path, "wb") as file:
-        file.write(response.content)
-
-
-def fetch_spacex_last_launch(launch_id: str, api_key: str = None):
-    """Получает фотографии последнего запуска SpaceX по ID запуска и сохраняет их локально.
-
-        Args:
-            launch_id (str): Идентификатор запуска SpaceX в формате API v4.
-            api_key (str, необязательный): API-ключ для авторизации, если требуется.
-
-        Raises:
-            requests.exceptions.HTTPError: Возникает, если HTTP-запрос завершился с ошибкой.
-            requests.exceptions.RequestException: Возникает при других ошибках во время запроса.
-            OSError: Возникает при ошибках создания директорий или записи файла.
-        """
-    url = f"https://api.spacexdata.com/v4/launches/{launch_id}"
-
-    headers = {}
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
-
-    response = requests.get(url, headers=headers, timeout=10)
-    response.raise_for_status()
-
-    data = response.json()
-    image_urls = data.get("links", {}).get("flickr", {}).get("original", [])
-
-    if not image_urls:
-        print("Фотографий для этого запуска не найдено.")
-        return
-
-    print("Найдено фото:", len(image_urls))
-    image_folder = "spacex_images"
-    os.makedirs(image_folder, exist_ok=True)
-    for i, link in enumerate(image_urls, start=0):
-        ext = os.path.splitext(link)[1]
-        filename = os.path.join(image_folder, f"spacex_{i}{ext}")
-        download_image(link, filename)
-
-
-def main():
-    load_dotenv()
-
-    SPACEX_API_KEY = os.getenv("SPACEX_API_KEY")
-
-    launch_id = "5eb87d47ffd86e000604b38a"
-    fetch_spacex_last_launch(launch_id, api_key=SPACEX_API_KEY)
-
+        logger.info(f"Найдено фотографий: {len(image_urls)}")
+        for i, link in enumerate(image_urls):
+            try:
+                download_image(link, save_dir, i, prefix=prefix)
+            except Exception as e:
+                logger.error(f"Ошибка при загрузке {link}: {e}")
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Ошибка при выполнении запроса к SpaceX API: {e}")
+        raise
 
 if __name__ == "__main__":
-    main()
+    run_script(
+        description="Скачивание изображений запуска SpaceX",
+        main_func=fetch_spacex_last_launch,
+        default_args={
+            "launch_id": {"type": str, "default": None, "help": "ID запуска SpaceX (по умолчанию загружается последний запуск)"},
+            "save_dir": {"type": str, "default": "spacex_images", "help": "Папка для сохранения изображений (по умолчанию spacex_images)"}
+        },
+        api_key_required=False
+    )
