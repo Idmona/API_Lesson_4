@@ -63,3 +63,7 @@ htmlcov/
 *.xlsx
 *.db
 *.sqlite
+
+nasa_images/
+nasa_epic_photos/
+spacex_images/
