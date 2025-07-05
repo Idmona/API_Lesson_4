@@ -1,11 +1,22 @@
 import os
 import random
+import time
 from dotenv import load_dotenv
 import telegram
+import schedule
 
 
 def send_image_to_telegram(bot, image_path: str, caption: str = None) -> None:
-    """Отправляет изображение в Telegram-канал."""
+    """Отправляет изображение в Telegram-канал.
+
+    Args:
+        bot (telegram.Bot): Объект Telegram-бота.
+        image_path (str): Путь к изображению для отправки.
+        caption (str, optional): Подпись к изображению. По умолчанию None.
+
+    Raises:
+        Exception: При ошибках отправки изображения.
+    """
     try:
         with open(image_path, "rb") as photo:
             bot.send_photo(chat_id=os.getenv("CHAT_ID"), photo=photo, caption=caption)
@@ -15,18 +26,27 @@ def send_image_to_telegram(bot, image_path: str, caption: str = None) -> None:
 
 
 def get_random_image_from_random_folder(image_dirs: list) -> str:
-    """Выбирает случайную папку и случайное изображение из неё."""
+    """Выбирает случайную папку из списка и случайное изображение из неё.
+
+    Args:
+        image_dirs (list): Список путей к папкам с изображениями.
+
+    Returns:
+        str: Полный путь к выбранному изображению.
+
+    Raises:
+        ValueError: Если ни одна папка не найдена или в выбранной папке нет изображений.
+    """
     valid_extensions = (".jpg", ".png")
 
-    # Фильтруем существующие папки
     existing_dirs = [d for d in image_dirs if os.path.exists(d)]
     if not existing_dirs:
         raise ValueError("Ни одна из указанных папок не найдена")
 
-    # Выбираем случайную папку
+    random.shuffle(existing_dirs)
+
     chosen_dir = random.choice(existing_dirs)
 
-    # Получаем список изображений в выбранной папке
     try:
         files = [
             f for f in os.listdir(chosen_dir)
@@ -34,44 +54,80 @@ def get_random_image_from_random_folder(image_dirs: list) -> str:
         ]
         if not files:
             raise ValueError(f"В папке {chosen_dir} нет изображений с расширениями {valid_extensions}")
-        # Выбираем случайное изображение
         return os.path.join(chosen_dir, random.choice(files))
     except Exception as e:
         raise ValueError(f"Ошибка при поиске изображений в {chosen_dir}: {e}")
 
 
+def publish_image(bot):
+    """Публикует случайное изображение в Telegram-канал с подписью.
+
+    Args:
+        bot (telegram.Bot): Объект Telegram-бота.
+    """
+    caption_templates = [
+        "Космическое фото от @CosmoSnapsBot! Источник: {source} 🚀",
+        "Погрузитесь в красоту космоса! 📸 Источник: {source}",
+        "Новое изображение из космоса! 🌌 От @CosmoSnapsBot, источник: {source}",
+        "Взгляните на эту космическую красоту! ✨ Источник: {source}",
+        "Космос зовёт! @CosmoSnapsBot делится фото от {source} 🪐",
+        "Из космоса с любовью! 💫 Источник: {source}",
+        "Удивительное фото от @CosmoSnapsBot! Источник: {source} 🌠",
+        "Путешествие по звёздам с @CosmoSnapsBot! Источник: {source} ⭐"
+    ]
+
+    image_dirs = ["nasa_images", "nasa_epic_photos", "spacex_images"]
+    source = None
+    try:
+        image_path = get_random_image_from_random_folder(image_dirs)
+        source = (
+            "NASA APOD" if "nasa_images" in image_path else
+            "NASA EPIC" if "nasa_epic_photos" in image_path else
+            "SpaceX"
+        )
+        caption = random.choice(caption_templates).format(source=source)
+        send_image_to_telegram(bot, image_path, caption)
+    except ValueError as e:
+        print(f"Ошибка: {e}")
+
+
 def main():
-    # Загружаем переменные из .env
+    """Основная функция для запуска бота.
+
+    Загружает переменные окружения, создаёт объект бота, настраивает расписание
+    публикаций и запускает бесконечный цикл для выполнения задач.
+
+    Raises:
+        ValueError: Если отсутствуют необходимые переменные окружения или неверный формат интервала.
+    """
     load_dotenv()
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     chat_id = os.getenv("CHAT_ID")
+    post_interval = os.getenv("POST_INTERVAL_HOURS", "4")
 
-    # Проверяем, что токен и chat_id загружены
     if not token:
         raise ValueError("TELEGRAM_BOT_TOKEN not found in .env")
     if not chat_id:
         raise ValueError("CHAT_ID not found in .env")
 
-    # Создаём объект бота
+    try:
+        post_interval = float(post_interval)
+    except ValueError:
+        raise ValueError("POST_INTERVAL_HOURS must be a number")
+
     bot = telegram.Bot(token=token)
 
-    # Проверяем, что бот работает
     print(bot.get_me())
-
-    # Выводим текущую рабочую директорию для отладки
     print(f"Текущая рабочая директория: {os.getcwd()}")
+    print(f"Частота публикации: каждые {post_interval} часов")
 
-    # Список папок с изображениями
-    image_dirs = ["nasa_images", "nasa_epic_photos", "spacex_images"]
-    caption = "Космическое фото от @CosmoSnapsBot! 🚀"
+    schedule.every(post_interval).hours.do(publish_image, bot=bot)
 
-    try:
-        # Получаем случайное изображение из случайной папки
-        image_path = get_random_image_from_random_folder(image_dirs)
-        # Отправляем изображение
-        send_image_to_telegram(bot, image_path, caption)
-    except ValueError as e:
-        print(f"Ошибка: {e}")
+    publish_image(bot)
+
+    while True:
+        schedule.run_pending()
+        time.sleep(60)
 
 
 if __name__ == "__main__":

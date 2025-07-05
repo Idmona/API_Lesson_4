@@ -4,6 +4,7 @@ from urllib.parse import urlencode
 from utils import run_script, logger
 from common import download_image
 
+
 def download_epic_images(count: int = 10, save_dir: str = "epic_images", api_key: str = None) -> None:
     """Скачивает изображения Земли через NASA EPIC API.
 
@@ -45,13 +46,15 @@ def download_epic_images(count: int = 10, save_dir: str = "epic_images", api_key
         logger.error(f"Ошибка при выполнении запроса к NASA EPIC API: {e}")
         raise
 
+
 if __name__ == "__main__":
     run_script(
         description="Скачивание изображений Земли с NASA EPIC API",
         main_func=download_epic_images,
         default_args={
             "count": {"type": int, "default": 10, "help": "Сколько изображений скачать (по умолчанию 10, максимум 10)"},
-            "save_dir": {"type": str, "default": "nasa_epic_photos", "help": "Папка для сохранения изображений (по умолчанию nasa_epic_photos)"}
+            "save_dir": {"type": str, "default": "nasa_epic_photos",
+                         "help": "Папка для сохранения изображений (по умолчанию nasa_epic_photos)"}
         },
         api_key_required=True
     )

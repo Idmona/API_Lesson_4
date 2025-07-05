@@ -2,6 +2,7 @@ import requests
 from utils import run_script, logger
 from common import download_image
 
+
 def fetch_spacex_last_launch(launch_id: str = None, save_dir: str = "spacex_images") -> None:
     """Получает фотографии запуска SpaceX по ID или последнего запуска и сохраняет их локально.
 
@@ -28,7 +29,6 @@ def fetch_spacex_last_launch(launch_id: str = None, save_dir: str = "spacex_imag
         print("Полный ответ API:", data)  # Диагностика
         image_urls = data.get("links", {}).get("flickr", {}).get("original", [])
 
-        # Если в flickr.original нет фотографий, попробуем использовать patch
         if not image_urls:
             patch_urls = []
             patch_data = data.get("links", {}).get("patch", {})
@@ -40,7 +40,7 @@ def fetch_spacex_last_launch(launch_id: str = None, save_dir: str = "spacex_imag
                 image_urls = patch_urls
                 logger.info(f"Используются патчи как изображения: {len(image_urls)}")
             else:
-                # Если ни flickr, ни patch нет, используем запасной launch_id
+
                 fallback_launch_id = "5eb87d47ffd86e000604b38a"
                 fallback_url = f"https://api.spacexdata.com/v4/launches/{fallback_launch_id}"
                 fallback_response = requests.get(fallback_url, timeout=30)
@@ -74,13 +74,16 @@ def fetch_spacex_last_launch(launch_id: str = None, save_dir: str = "spacex_imag
         logger.error(f"Ошибка при выполнении запроса к SpaceX API: {e}")
         raise
 
+
 if __name__ == "__main__":
     run_script(
         description="Скачивание изображений запуска SpaceX",
         main_func=fetch_spacex_last_launch,
         default_args={
-            "launch_id": {"type": str, "default": None, "help": "ID запуска SpaceX (по умолчанию загружается последний запуск)"},
-            "save_dir": {"type": str, "default": "spacex_images", "help": "Папка для сохранения изображений (по умолчанию spacex_images)"}
+            "launch_id": {"type": str, "default": None,
+                          "help": "ID запуска SpaceX (по умолчанию загружается последний запуск)"},
+            "save_dir": {"type": str, "default": "spacex_images",
+                         "help": "Папка для сохранения изображений (по умолчанию spacex_images)"}
         },
         api_key_required=False
     )
