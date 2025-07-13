@@ -4,6 +4,7 @@ import time
 from dotenv import load_dotenv
 import telegram
 import schedule
+from utils import logger
 
 
 def send_image_to_telegram(bot, image_path: str, caption: str = None) -> None:
@@ -15,14 +16,23 @@ def send_image_to_telegram(bot, image_path: str, caption: str = None) -> None:
         caption (str, optional): Подпись к изображению. По умолчанию None.
 
     Raises:
-        Exception: При ошибках отправки изображения.
+        OSError: При ошибках открытия файла.
+        telegram.error.TelegramError: При ошибках отправки в Telegram.
     """
+    if not isinstance(image_path, str):
+        raise ValueError(f"Некорректный путь к изображению: {image_path}")
+
     try:
         with open(image_path, "rb") as photo:
-            bot.send_photo(chat_id=os.getenv("CHAT_ID"), photo=photo, caption=caption)
-        print(f"Изображение отправлено: {image_path}")
-    except Exception as e:
-        print(f"Ошибка при отправке изображения {image_path}: {e}")
+            try:
+                bot.send_photo(chat_id=os.getenv("TG_CHAT_ID"), photo=photo, caption=caption)
+            except telegram.error.TelegramError as e:
+                logger.error(f"Ошибка при отправке изображения {image_path} в Telegram: {e}")
+                raise
+    except OSError as e:
+        logger.error(f"Ошибка при открытии файла {image_path}: {e}")
+        raise
+    logger.info(f"Изображение отправлено: {image_path}")
 
 
 def get_random_image_from_random_folder(image_dirs: list) -> str:
@@ -36,6 +46,7 @@ def get_random_image_from_random_folder(image_dirs: list) -> str:
 
     Raises:
         ValueError: Если ни одна папка не найдена или в выбранной папке нет изображений.
+        OSError: При ошибках доступа к файловой системе.
     """
     valid_extensions = (".jpg", ".png")
 
@@ -44,19 +55,20 @@ def get_random_image_from_random_folder(image_dirs: list) -> str:
         raise ValueError("Ни одна из указанных папок не найдена")
 
     random.shuffle(existing_dirs)
-
     chosen_dir = random.choice(existing_dirs)
 
     try:
-        files = [
-            f for f in os.listdir(chosen_dir)
-            if os.path.isfile(os.path.join(chosen_dir, f)) and f.lower().endswith(valid_extensions)
-        ]
-        if not files:
-            raise ValueError(f"В папке {chosen_dir} нет изображений с расширениями {valid_extensions}")
-        return os.path.join(chosen_dir, random.choice(files))
-    except Exception as e:
+        files = os.listdir(chosen_dir)
+    except OSError as e:
         raise ValueError(f"Ошибка при поиске изображений в {chosen_dir}: {e}")
+
+    files = [
+        f for f in files
+        if os.path.isfile(os.path.join(chosen_dir, f)) and f.lower().endswith(valid_extensions)
+    ]
+    if not files:
+        raise ValueError(f"В папке {chosen_dir} нет изображений с расширениями {valid_extensions}")
+    return os.path.join(chosen_dir, random.choice(files))
 
 
 def publish_image(bot):
@@ -88,7 +100,9 @@ def publish_image(bot):
         caption = random.choice(caption_templates).format(source=source)
         send_image_to_telegram(bot, image_path, caption)
     except ValueError as e:
-        print(f"Ошибка: {e}")
+        logger.error(f"Ошибка: {e}")
+    except (OSError, telegram.error.TelegramError) as e:
+        logger.error(f"Ошибка при публикации изображения: {e}")
 
 
 def main():
@@ -101,19 +115,19 @@ def main():
         ValueError: Если отсутствуют необходимые переменные окружения или неверный формат интервала.
     """
     load_dotenv()
-    token = os.getenv("TELEGRAM_BOT_TOKEN")
-    chat_id = os.getenv("CHAT_ID")
-    post_interval = os.getenv("POST_INTERVAL_HOURS", "4")
+    token = os.getenv("TG_BOT_TOKEN")
+    chat_id = os.getenv("TG_CHAT_ID")
+    post_interval = os.getenv("TG_POST_INTERVAL_HOURS", "4")
 
     if not token:
-        raise ValueError("TELEGRAM_BOT_TOKEN not found in .env")
+        raise ValueError("TG_BOT_TOKEN not found in .env")
     if not chat_id:
-        raise ValueError("CHAT_ID not found in .env")
+        raise ValueError("TG_CHAT_ID not found in .env")
 
     try:
         post_interval = float(post_interval)
     except ValueError:
-        raise ValueError("POST_INTERVAL_HOURS must be a number")
+        raise ValueError("TG_POST_INTERVAL_HOURS must be a number")
 
     bot = telegram.Bot(token=token)
 
