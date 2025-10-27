@@ -1,74 +1,81 @@
 import argparse
-from dotenv import load_dotenv
 import os
+from datetime import datetime, timedelta
 import requests
 from utils import logger
-from image_utils import download_image, get_api_key
+from image_utils import download_image
+from config_utils import get_api_key, restrict_count
 
-def main(api_key: str, save_dir: str = "nasa_images", count: int = 30, max_images: int = 100) -> None:
-    """Получает и сохраняет фотографии дня NASA APOD.
+MAX_APOD_IMAGES = 100
+
+def download_nasa_apod_images(nasa_api_key: str = None, count: int = 5, save_dir: str = "nasa_images") -> None:
+    """Загружает изображения NASA APOD и сохраняет их локально.
 
     Args:
-        api_key (str): API-ключ для доступа к NASA API.
-        save_dir (str, optional): Папка для сохранения изображений. По умолчанию 'nasa_images'.
-        count (int, optional): Количество изображений для загрузки (максимум 100). По умолчанию 30.
-        max_images (int, optional): Максимальное количество изображений для загрузки. По умолчанию 100.
+        nasa_api_key (str, optional): Ключ API NASA. По умолчанию None.
+        count (int, optional): Количество изображений для загрузки. По умолчанию 5.
+        save_dir (str, optional): Папка для сохранения. По умолчанию 'nasa_images'.
 
     Raises:
-        requests.exceptions.HTTPError: Ошибки при выполнении HTTP-запроса.
-        requests.exceptions.RequestException: Другие ошибки запроса.
-        ValueError: Если count превышает допустимое значение.
+        ValueError: Если ключ API отсутствует или count превышает максимум.
+        requests.exceptions.RequestException: При ошибках запроса к API.
     """
-    if count > max_images:
-        raise ValueError(f"Максимальное количество изображений для загрузки: 100")
+    nasa_api_key = get_api_key("NASA_API_KEY", nasa_api_key)
+    restrict_count(count, MAX_APOD_IMAGES, "NASA APOD")
 
-    params = {
-        "api_key": api_key,
-        "count": count,
-        "thumbs": True
-    }
     url = "https://api.nasa.gov/planetary/apod"
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=count - 1)
+    params = {
+        "api_key": nasa_api_key,
+        "start_date": start_date.strftime("%Y-%m-%d"),
+        "end_date": end_date.strftime("%Y-%m-%d"),
+    }
 
-    response = requests.get(url, params=params, timeout=30)
-    response.raise_for_status()
-    apod_records = response.json()
+    try:
+        response = requests.get(url, params=params, timeout=30)
+        response.raise_for_status()
+        images_data = response.json()
+        logger.debug(f"Полный ответ API: {images_data}")
 
-    image_index = 0
-    for _, apod_entry in enumerate(apod_records):
-        if apod_entry.get("media_type") == "image" and apod_entry.get("url"):
+        for index, image_data in enumerate(images_data):
+            if image_data.get("media_type") != "image":
+                logger.warning(f"Пропущен объект {index}: не является изображением")
+                continue
+            image_url = image_data.get("url")
+            if not image_url:
+                logger.warning(f"Пропущен объект {index}: отсутствует URL изображения")
+                continue
             try:
-                download_image(apod_entry["url"], save_dir, image_index, prefix="nasa_apod", params=None)
-                image_index += 1
+                download_image(image_url, save_dir, index, prefix="nasa_apod", params=None)
             except (ValueError, requests.exceptions.RequestException, OSError) as e:
-                logger.error(f"Ошибка при загрузке {apod_entry.get('url', 'без URL')}: {e}")
-        else:
-            logger.warning(f"Пропущено (не изображение или нет URL): {apod_entry.get('title', 'без названия')}")
+                logger.error(f"Ошибка при загрузке {image_url}: {e}")
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Ошибка при выполнении запроса к NASA APOD API: {e}")
+        raise
 
-if __name__ == "__main__":
-    MAX_APOD_IMAGES = 100  # Максимальное количество изображений для загрузки через NASA APOD API
-    parser = argparse.ArgumentParser(description="Загрузка изображений NASA APOD")
+def main():
+    parser = argparse.ArgumentParser(description="Скачивание изображений NASA APOD")
+    parser.add_argument(
+        "--nasa_api_key",
+        type=str,
+        default=os.getenv("NASA_API_KEY"),
+        help="NASA API key (default: from NASA_API_KEY env variable)"
+    )
     parser.add_argument(
         "--count",
         type=int,
-        default=30,
-        help="Сколько изображений скачать (по умолчанию 30, максимум 100)"
+        default=5,
+        help=f"Number of images to download (default: 5, max: {MAX_APOD_IMAGES})"
     )
     parser.add_argument(
         "--save_dir",
         type=str,
         default="nasa_images",
-        help="Папка для сохранения изображений (по умолчанию nasa_images)"
-    )
-    parser.add_argument(
-        "--api_key",
-        type=str,
-        help="API-ключ (если не указан — берётся из .env)"
+        help="Directory to save images (default: nasa_images)"
     )
     args = parser.parse_args()
+    download_nasa_apod_images(args.nasa_api_key, args.count, args.save_dir)
 
-    try:
-        api_key = get_api_key("NASA_API_KEY", args.api_key)
-        main(api_key=api_key, count=args.count, save_dir=args.save_dir, max_images=MAX_APOD_IMAGES)
-    except (ValueError, requests.exceptions.RequestException) as e:
-        logger.error(f"Ошибка: {e}")
-        raise
+if __name__ == "__main__":
+    main()

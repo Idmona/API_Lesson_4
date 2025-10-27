@@ -3,93 +3,93 @@ import requests
 from utils import logger
 from image_utils import download_image
 
-def get_patch_urls(launch_info: dict) -> list:
+def get_patch_urls(launch_data: dict) -> list:
     """Извлекает URL патчей из данных запуска SpaceX.
-
     Args:
-        launch_info (dict): Данные запуска от SpaceX API.
-
+        launch_data (dict): Данные запуска от SpaceX API.
     Returns:
         list: Список URL патчей (small и/или large).
     """
+    patch = launch_data.get("links", {}).get("patch", {})
     patch_urls = []
-    patch_urls_dict = launch_info.get("links", {}).get("patch", {})
-    if patch_urls_dict.get("small"):
-        patch_urls.append(patch_urls_dict["small"])
-    if patch_urls_dict.get("large"):
-        patch_urls.append(patch_urls_dict["large"])
+    if patch.get("small"):
+        patch_urls.append(patch["small"])
+    if patch.get("large"):
+        patch_urls.append(patch["large"])
     return patch_urls
 
-def get_image_urls(launch_info: dict, launch_id: str = None) -> tuple[list, str]:
-    """Извлекает URL изображений (Flickr или патчи) и префикс для имен файлов.
-
+def get_spacex_prefix(launch_id: str = None) -> str:
+    """Возвращает префикс для имен файлов на основе ID запуска.
     Args:
-        launch_info (dict): Данные запуска от SpaceX API.
-        launch_id (str, optional): ID запуска для формирования префикса.
+        launch_id (str, optional): ID запуска SpaceX.
+    Returns:
+        str: Префикс для имен файлов.
+    """
+    return f"spacex_{launch_id}" if launch_id else "spacex_latest"
 
+def extract_image_urls_and_prefix(launch_data: dict, launch_id: str = None) -> tuple[list, str]:
+    """Извлекает URL изображений (Flickr или патчи) и префикс для имен файлов.
+    Args:
+        launch_data (dict): Данные запуска от SpaceX API.
+        launch_id (str, optional): ID запуска для формирования префикса.
     Returns:
         tuple[list, str]: Список URL изображений и префикс для имен файлов.
     """
-    prefix = f"spacex_{launch_id}" if launch_id else "spacex_latest"
-    image_urls = launch_info.get("links", {}).get("flickr", {}).get("original", [])
+    prefix = get_spacex_prefix(launch_id)
+    image_urls = launch_data.get("links", {}).get("flickr", {}).get("original", [])
+    launch_name = f"запуска {launch_id}" if launch_id else "последнего запуска"
     if image_urls:
-        logger.info(f"Найдено изображений {'запуска ' + launch_id if launch_id else 'последнего запуска'}: {len(image_urls)}")
+        logger.info(f"Найдено изображений {launch_name}: {len(image_urls)}")
         return image_urls, prefix
 
-    image_urls = get_patch_urls(launch_info)
+    image_urls = get_patch_urls(launch_data)
     if image_urls:
-        logger.info(f"Используются патчи {'запуска ' + launch_id if launch_id else 'последнего запуска'}: {len(image_urls)}")
-    return image_urls, prefix
+        logger.info(f"Используются патчи {launch_name}: {len(image_urls)}")
+        return image_urls, prefix
+    return [], prefix
 
-def main(launch_id: str = None, save_dir: str = "spacex_images",
-         url: str = "https://api.spacexdata.com/v4/launches/latest",
-         prefix: str = "spacex_latest") -> None:
-    """Получает фотографии запуска SpaceX по ID или последнего запуска и сохраняет их локально.
-
+def fetch_launch_data(launch_id: str = None) -> dict:
+    """Получает данные запуска от SpaceX API.
     Args:
-        launch_id (str, optional): Идентификатор запуска SpaceX в формате API v4.
-            Если None, загружается последний запуск.
-        save_dir (str, optional): Папка для сохранения изображений. По умолчанию 'spacex_images'.
-        url (str, optional): URL для запроса к SpaceX API. По умолчанию для последнего запуска.
-        prefix (str, optional): Префикс для имен файлов. По умолчанию 'spacex_latest'.
-
+        launch_id (str, optional): ID запуска. Если None, запрашивается последний запуск.
+    Returns:
+        dict: Данные запуска.
     Raises:
-        requests.exceptions.HTTPError: Ошибки при выполнения HTTP-запроса.
-        requests.exceptions.RequestException: Другие ошибки запроса.
+        requests.exceptions.RequestException: При ошибках запроса.
     """
-    if launch_id:
-        url = f"https://api.spacexdata.com/v4/launches/{launch_id}"
-        prefix = f"spacex_{launch_id}"
-
+    url = f"https://api.spacexdata.com/v4/launches/{launch_id}" if launch_id else "https://api.spacexdata.com/v4/launches/latest"
     response = requests.get(url, timeout=30)
     response.raise_for_status()
-    launch_info = response.json()
-    logger.debug(f"Полный ответ API: {launch_info}")
-    image_urls, prefix = get_image_urls(launch_info, launch_id)
+    launch_data = response.json()
+    logger.debug(f"Полный ответ API: {launch_data}")
+    return launch_data
+
+def download_spacex_images(launch_id: str = "5eb87d47ffd86e000604b38a", save_dir: str = "spacex_images") -> None:
+    """Загружает изображения запуска SpaceX и сохраняет их локально.
+    Args:
+        launch_id (str, optional): ID запуска SpaceX. По умолчанию запасной ID.
+        save_dir (str, optional): Папка для сохранения. По умолчанию 'spacex_images'.
+    Raises:
+        requests.exceptions.RequestException: При ошибках запроса к API.
+    """
+    try:
+        launch_data = fetch_launch_data(launch_id)
+        image_urls, prefix = extract_image_urls_and_prefix(launch_data, launch_id)
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Ошибка при загрузке данных запуска {launch_id or 'последнего'}: {e}")
+        return
 
     if not image_urls:
-        fallback_launch_id = "5eb87d47ffd86e000604b38a"
-        fallback_url = f"https://api.spacexdata.com/v4/launches/{fallback_launch_id}"
-        try:
-            fallback_response = requests.get(fallback_url, timeout=30)
-            fallback_response.raise_for_status()
-            fallback_launch_info = fallback_response.json()
-            logger.debug(f"Полный ответ API для запасного запуска: {fallback_launch_info}")
-            image_urls, prefix = get_image_urls(fallback_launch_info, fallback_launch_id)
-            if not image_urls:
-                logger.warning(f"Фотографий и патчей для последнего и запасного запуска не найдено.")
-                return
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Ошибка при выполнении запроса к запасному запуску SpaceX API: {e}")
-            return
+        logger.warning(f"Фотографий и патчей для запуска {launch_id or 'последнего'} не найдено.")
+        return
 
-    for i, image_url in enumerate(image_urls):
+    for index, image_url in enumerate(image_urls):
         try:
-            download_image(image_url, save_dir, i, prefix=prefix, params=None)
+            download_image(image_url, save_dir, index, prefix=prefix, params=None)
         except (ValueError, requests.exceptions.RequestException, OSError) as e:
             logger.error(f"Ошибка при загрузке {image_url}: {e}")
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser(description="Скачивание изображений запуска SpaceX")
     parser.add_argument(
         "--launch_id",
@@ -104,9 +104,7 @@ if __name__ == "__main__":
         help="Папка для сохранения изображений (по умолчанию spacex_images)"
     )
     args = parser.parse_args()
+    download_spacex_images(launch_id=args.launch_id, save_dir=args.save_dir)
 
-    try:
-        main(launch_id=args.launch_id, save_dir=args.save_dir)
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Ошибка: {e}")
-        raise
+if __name__ == "__main__":
+    main()

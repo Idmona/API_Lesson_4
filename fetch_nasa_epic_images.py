@@ -1,73 +1,69 @@
 import argparse
-from datetime import datetime
-from urllib.parse import urlencode
-from dotenv import load_dotenv
 import os
 import requests
 from utils import logger
-from image_utils import download_image, get_api_key
+from image_utils import download_image
+from config_utils import get_api_key
 
-def main(count: int = 10, save_dir: str = "epic_images", api_key: str = None, max_images: int = 10) -> None:
-    """Скачивает изображения Земли через NASA EPIC API.
+MAX_EPIC_IMAGES = 10
+
+def download_nasa_epic_images(nasa_api_key: str = None, save_dir: str = "nasa_epic_photos") -> None:
+    """Загружает изображения NASA EPIC и сохраняет их локально.
 
     Args:
-        count (int, optional): Количество изображений для загрузки (максимум 10). По умолчанию 10.
-        save_dir (str, optional): Папка для сохранения изображений. По умолчанию 'epic_images'.
-        api_key (str): API-ключ для доступа к NASA API.
-        max_images (int, optional): Максимальное количество изображений для загрузки. По умолчанию 10.
+        nasa_api_key (str, optional): Ключ API NASA. По умолчанию None.
+        save_dir (str, optional): Папка для сохранения. По умолчанию 'nasa_epic_photos'.
 
     Raises:
-        ValueError: Если count превышает допустимое значение.
-        requests.exceptions.RequestException: Ошибки при выполнении HTTP-запроса.
+        ValueError: Если ключ API отсутствует.
+        requests.exceptions.RequestException: При ошибках запроса к API.
     """
-    if count > max_images:
-        raise ValueError(f"Максимальное количество изображений для загрузки: 10")
+    nasa_api_key = get_api_key("NASA_API_KEY", nasa_api_key)
 
-    params = {"api_key": api_key}
-    epic_api_url = "https://api.nasa.gov/EPIC/api/natural/images"
-    response = requests.get(epic_api_url, params=params, timeout=30)
-    response.raise_for_status()
-    epic_records = response.json()[:count]
+    url = "https://api.nasa.gov/EPIC/api/natural"
+    params = {"api_key": nasa_api_key}
 
-    for i, epic_record in enumerate(epic_records):
-        try:
-            img_date = datetime.strptime(epic_record["date"], "%Y-%m-%d %H:%M:%S")
-            date_path = img_date.strftime("%Y/%m/%d")
-            image_url = (
-                f"https://api.nasa.gov/EPIC/archive/natural/"
-                f"{date_path}/png/{epic_record['image']}.png"
-            )
-            download_image(image_url, save_dir, i, prefix="nasa_epic", params={"api_key": api_key})
-        except ValueError as e:
-            logger.error(f"Ошибка формата даты для изображения {epic_record.get('image', 'без имени')}: {e}")
-        except (requests.exceptions.RequestException, OSError) as e:
-            logger.error(f"Ошибка при загрузке изображения {epic_record.get('image', 'без имени')}: {e}")
+    try:
+        response = requests.get(url, params=params, timeout=30)
+        response.raise_for_status()
+        images_data = response.json()
+        logger.debug(f"Полный ответ API: {images_data}")
 
-if __name__ == "__main__":
-    MAX_EPIC_IMAGES = 10  # Максимальное количество изображений для загрузки через NASA EPIC API
-    parser = argparse.ArgumentParser(description="Скачивание изображений Земли с NASA EPIC API")
+        if len(images_data) > MAX_EPIC_IMAGES:
+            images_data = images_data[:MAX_EPIC_IMAGES]
+            logger.info(f"Ограничено до {MAX_EPIC_IMAGES} изображений")
+
+        for index, image_data in enumerate(images_data):
+            image_id = image_data.get("image")
+            date = image_data.get("date").split(" ")[0].replace("-", "/")
+            if not image_id or not date:
+                logger.warning(f"Пропущен объект {index}: отсутствует ID или дата")
+                continue
+            image_url = f"https://api.nasa.gov/EPIC/archive/natural/{date}/png/{image_id}.png"
+            try:
+                download_image(image_url, save_dir, index, prefix="nasa_epic", params={"api_key": nasa_api_key})
+            except (ValueError, requests.exceptions.RequestException, OSError) as e:
+                logger.error(f"Ошибка при загрузке {image_url}: {e}")
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Ошибка при выполнении запроса к NASA EPIC API: {e}")
+        raise
+
+def main():
+    parser = argparse.ArgumentParser(description="Скачивание изображений NASA EPIC")
     parser.add_argument(
-        "--count",
-        type=int,
-        default=10,
-        help="Сколько изображений скачать (по умолчанию 10, максимум 10)"
+        "--nasa_api_key",
+        type=str,
+        default=os.getenv("NASA_API_KEY"),
+        help="NASA API key (default: from NASA_API_KEY env variable)"
     )
     parser.add_argument(
         "--save_dir",
         type=str,
         default="nasa_epic_photos",
-        help="Папка для сохранения изображений (по умолчанию nasa_epic_photos)"
-    )
-    parser.add_argument(
-        "--api_key",
-        type=str,
-        help="API-ключ (если не указан — берётся из .env)"
+        help="Directory to save images (default: nasa_epic_photos)"
     )
     args = parser.parse_args()
+    download_nasa_epic_images(args.nasa_api_key, args.save_dir)
 
-    try:
-        api_key = get_api_key("NASA_API_KEY", args.api_key)
-        main(count=args.count, save_dir=args.save_dir, api_key=api_key, max_images=MAX_EPIC_IMAGES)
-    except (ValueError, requests.exceptions.RequestException) as e:
-        logger.error(f"Ошибка: {e}")
-        raise
+if __name__ == "__main__":
+    main()
