@@ -28,26 +28,22 @@ def download_nasa_apod_images(nasa_api_key: str, count: int = 5, save_dir: str =
         "start_date": start_date.strftime("%Y-%m-%d"),
         "end_date": end_date.strftime("%Y-%m-%d"),
     }
-    try:
-        response = requests.get(url, params=params, timeout=30)
-        response.raise_for_status()
-        images_data = response.json()
-        logger.debug(f"Полный ответ API: {images_data}")
-        for index, image_data in enumerate(images_data):
-            if image_data.get("media_type") != "image":
-                logger.warning(f"Пропущен объект {index}: не является изображением")
-                continue
-            image_url = image_data.get("url")
-            if not image_url:
-                logger.warning(f"Пропущен объект {index}: отсутствует URL изображения")
-                continue
-            try:
-                download_image(image_url, save_dir, index, prefix="nasa_apod", params=None)
-            except (ValueError, requests.exceptions.RequestException, OSError) as e:
-                logger.error(f"Ошибка при загрузке {image_url}: {e}")
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Ошибка при выполнении запроса к NASA APOD API: {e}")
-        raise
+    response = requests.get(url, params=params, timeout=30)
+    response.raise_for_status()
+    images_data = response.json()
+    logger.debug(f"Полный ответ API: {images_data}")
+    for index, image_data in enumerate(images_data):
+        if image_data.get("media_type") != "image":
+            logger.warning(f"Пропущен объект {index}: не является изображением")
+            continue
+        image_url = image_data.get("url")
+        if not image_url:
+            logger.warning(f"Пропущен объект {index}: отсутствует URL изображения")
+            continue
+        try:
+            download_image(image_url, save_dir, index, prefix="nasa_apod", params=None)
+        except (ValueError, requests.exceptions.RequestException, OSError) as e:
+            logger.error(f"Ошибка при загрузке {image_url}: {e}")
 
 def main():
     parser = argparse.ArgumentParser(description="Скачивание изображений NASA APOD")
