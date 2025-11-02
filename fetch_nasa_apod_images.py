@@ -8,21 +8,18 @@ from config_utils import get_api_key, restrict_count
 
 MAX_APOD_IMAGES = 100
 
-def download_nasa_apod_images(nasa_api_key: str = None, count: int = 5, save_dir: str = "nasa_images") -> None:
-    """Загружает изображения NASA APOD и сохраняет их локально.
-
+def download_nasa_apod_images(nasa_api_key: str, count: int = 5, save_dir: str = "nasa_images") -> None:
+    """
+    Загружает изображения NASA APOD и сохраняет их локально.
     Args:
-        nasa_api_key (str, optional): Ключ API NASA. По умолчанию None.
+        nasa_api_key (str): Ключ API NASA.
         count (int, optional): Количество изображений для загрузки. По умолчанию 5.
         save_dir (str, optional): Папка для сохранения. По умолчанию 'nasa_images'.
-
     Raises:
-        ValueError: Если ключ API отсутствует или count превышает максимум.
+        ValueError: Если count превышает максимум.
         requests.exceptions.RequestException: При ошибках запроса к API.
     """
-    nasa_api_key = get_api_key("NASA_API_KEY", nasa_api_key)
     restrict_count(count, MAX_APOD_IMAGES, "NASA APOD")
-
     url = "https://api.nasa.gov/planetary/apod"
     end_date = datetime.now()
     start_date = end_date - timedelta(days=count - 1)
@@ -31,13 +28,11 @@ def download_nasa_apod_images(nasa_api_key: str = None, count: int = 5, save_dir
         "start_date": start_date.strftime("%Y-%m-%d"),
         "end_date": end_date.strftime("%Y-%m-%d"),
     }
-
     try:
         response = requests.get(url, params=params, timeout=30)
         response.raise_for_status()
         images_data = response.json()
         logger.debug(f"Полный ответ API: {images_data}")
-
         for index, image_data in enumerate(images_data):
             if image_data.get("media_type") != "image":
                 logger.warning(f"Пропущен объект {index}: не является изображением")

@@ -7,32 +7,25 @@ from config_utils import get_api_key
 
 MAX_EPIC_IMAGES = 10
 
-def download_nasa_epic_images(nasa_api_key: str = None, save_dir: str = "nasa_epic_photos") -> None:
-    """Загружает изображения NASA EPIC и сохраняет их локально.
-
+def download_nasa_epic_images(nasa_api_key: str, save_dir: str = "nasa_epic_photos") -> None:
+    """
+    Загружает изображения NASA EPIC и сохраняет их локально.
     Args:
-        nasa_api_key (str, optional): Ключ API NASA. По умолчанию None.
+        nasa_api_key (str): Ключ API NASA.
         save_dir (str, optional): Папка для сохранения. По умолчанию 'nasa_epic_photos'.
-
     Raises:
-        ValueError: Если ключ API отсутствует.
         requests.exceptions.RequestException: При ошибках запроса к API.
     """
-    nasa_api_key = get_api_key("NASA_API_KEY", nasa_api_key)
-
     url = "https://api.nasa.gov/EPIC/api/natural"
     params = {"api_key": nasa_api_key}
-
     try:
         response = requests.get(url, params=params, timeout=30)
         response.raise_for_status()
         images_data = response.json()
         logger.debug(f"Полный ответ API: {images_data}")
-
         if len(images_data) > MAX_EPIC_IMAGES:
             images_data = images_data[:MAX_EPIC_IMAGES]
             logger.info(f"Ограничено до {MAX_EPIC_IMAGES} изображений")
-
         for index, image_data in enumerate(images_data):
             image_id = image_data.get("image")
             date = image_data.get("date").split(" ")[0].replace("-", "/")
