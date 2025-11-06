@@ -34,11 +34,9 @@ def download_image(url: str, save_dir: str, index: int, prefix: str = "", params
         params (dict, optional): GET-параметры для запроса.
 
     Raises:
-        ValueError: Если URL пустой или некорректный.
         requests.exceptions.RequestException: Ошибки при загрузке.
         OSError: Ошибки при сохранении файла.
     """
-    restrict_url(url)
 
     response = requests.get(url, params=params, timeout=30)
     response.raise_for_status()

@@ -3,7 +3,7 @@ import os
 from datetime import datetime, timedelta
 import requests
 from utils import logger
-from image_utils import download_image
+from image_utils import download_image, restrict_url
 from config_utils import get_api_key, restrict_count
 
 MAX_APOD_IMAGES = 100
@@ -41,6 +41,7 @@ def download_nasa_apod_images(nasa_api_key: str, count: int = 5, save_dir: str =
             logger.warning(f"Пропущен объект {index}: отсутствует URL изображения")
             continue
         try:
+            restrict_url(image_url)
             download_image(image_url, save_dir, index, prefix="nasa_apod", params=None)
         except (ValueError, requests.exceptions.RequestException, OSError) as e:
             logger.error(f"Ошибка при загрузке {image_url}: {e}")

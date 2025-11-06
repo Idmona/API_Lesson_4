@@ -1,7 +1,7 @@
 import argparse
 import requests
 from utils import logger
-from image_utils import download_image
+from image_utils import download_image, restrict_url
 
 def get_patch_urls(launch_data: dict) -> list:
     """Извлекает URL патчей из данных запуска SpaceX.
@@ -85,6 +85,7 @@ def download_spacex_images(launch_id: str = "5eb87d47ffd86e000604b38a", save_dir
 
     for index, image_url in enumerate(image_urls):
         try:
+            restrict_url(image_url)
             download_image(image_url, save_dir, index, prefix=prefix, params=None)
         except (ValueError, requests.exceptions.RequestException, OSError) as e:
             logger.error(f"Ошибка при загрузке {image_url}: {e}")

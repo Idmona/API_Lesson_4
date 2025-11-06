@@ -2,7 +2,7 @@ import argparse
 import os
 import requests
 from utils import logger
-from image_utils import download_image
+from image_utils import download_image, restrict_url
 from config_utils import get_api_key
 
 MAX_EPIC_IMAGES = 10
@@ -33,6 +33,7 @@ def download_nasa_epic_images(nasa_api_key: str, save_dir: str = "nasa_epic_phot
             continue
         image_url = f"https://api.nasa.gov/EPIC/archive/natural/{date}/png/{image_id}.png"
         try:
+            restrict_url(image_url)
             download_image(image_url, save_dir, index, prefix="nasa_epic", params={"api_key": nasa_api_key})
         except (ValueError, requests.exceptions.RequestException, OSError) as e:
             logger.error(f"Ошибка при загрузке {image_url}: {e}")
